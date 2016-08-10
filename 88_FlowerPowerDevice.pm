@@ -56,20 +56,15 @@ sub FlowerPowerDevice_UpdateData($) {
     return undef;
   }
 
-  readingsBeginUpdate($hash);
   FlowerPowerDevice_ReadLocationData($hash, $data);
-  readingsEndUpdate($hash, 1);
 }
 
 sub FlowerPowerDevice_Define($$) {
   my ($hash, $def) = @_;
 
-  # define <name> FlowerPowerDevice <api_name> <location_identifier>
-  # define MyPlant FlowerPowerDevice MyFlowerPowerApi xy
-
   my @a = split("[ \t][ \t]*", $def);
 
-  return "syntax: define <name> FlowerPowerDevice <api_name> <location_identifier>"
+  return "syntax: define <name> FlowerPowerDevice <api_name> <location_identifier> <interval_in_sec>"
     if(int(@a) < 5 && int(@a) > 5); 
 
   my $name                  = $a[0];
@@ -134,33 +129,33 @@ sub FlowerPowerDevice_Notify($$) {
 sub FlowerPowerDevice_ReadLocationData($$) {
     my ($hash, $location_data) = @_;
 
-    my $label= "";
+    readingsBeginUpdate($hash);
+    readingsBulkUpdate($hash, "identifier", $location_data->{"location_identifier"});
+    readingsBulkUpdate($hash, "last_processed_upload_timedate_utc", $location_data->{"last_processed_upload_timedate_utc"});
+    readingsBulkUpdate($hash, "total_sample_count", $location_data->{"total_sample_count"});
+    readingsBulkUpdate($hash, "last_sample_upload", $location_data->{"last_sample_upload"});
+    readingsBulkUpdate($hash, "first_sample_utc", $location_data->{"first_sample_utc"});
+    readingsBulkUpdate($hash, "last_sample_utc", $location_data->{"last_sample_utc"});
+    readingsBulkUpdate($hash, "global_validity_timedate_utc", $location_data->{"global_validity_timedate_utc"});
+    readingsBulkUpdate($hash, "sharing_status", $location_data->{"user_sharing"}{"first_all_green"}{"sharing_status"});
 
-    readingsBulkUpdate($hash, $label."identifier", $location_data->{"location_identifier"});
-    readingsBulkUpdate($hash, $label."last_processed_upload_timedate_utc", $location_data->{"last_processed_upload_timedate_utc"});
-    readingsBulkUpdate($hash, $label."total_sample_count", $location_data->{"total_sample_count"});
-    readingsBulkUpdate($hash, $label."last_sample_upload", $location_data->{"last_sample_upload"});
-    readingsBulkUpdate($hash, $label."first_sample_utc", $location_data->{"first_sample_utc"});
-    readingsBulkUpdate($hash, $label."last_sample_utc", $location_data->{"last_sample_utc"});
-    readingsBulkUpdate($hash, $label."global_validity_timedate_utc", $location_data->{"global_validity_timedate_utc"});
-    readingsBulkUpdate($hash, $label."sharing_status", $location_data->{"user_sharing"}{"first_all_green"}{"sharing_status"});
-
-    FlowerPowerDevice_ReadLocationSensorData($hash, $label."air_temperature_", $location_data->{"air_temperature"});
-    FlowerPowerDevice_ReadLocationSensorData($hash, $label."light_", $location_data->{"light"});
-    FlowerPowerDevice_ReadLocationSensorData($hash, $label."soil_moisture_", $location_data->{"soil_moisture"});
-    FlowerPowerDevice_ReadLocationSensorData($hash, $label."fertilizer_", $location_data->{"fertilizer"});
+    FlowerPowerDevice_ReadLocationSensorData($hash, "air_temperature_", $location_data->{"air_temperature"});
+    FlowerPowerDevice_ReadLocationSensorData($hash, "light_", $location_data->{"light"});
+    FlowerPowerDevice_ReadLocationSensorData($hash, "soil_moisture_", $location_data->{"soil_moisture"});
+    FlowerPowerDevice_ReadLocationSensorData($hash, "fertilizer_", $location_data->{"fertilizer"});
+    readingsEndUpdate($hash, 1);
 }
 
-  sub FlowerPowerDevice_ReadLocationSensorData($$$) {
-    my ($hash, $label, $data) = @_;
+  sub FlowerPowerDevice_ReadLocationSensorData($$) {
+    my ($hash, $data) = @_;
     
-    readingsBulkUpdate($hash, $label."status_key", $data->{"status_key"});
-    readingsBulkUpdate($hash, $label."instruction_key", $data->{"instruction_key"});
-    readingsBulkUpdate($hash, $label."next_analysis_timedate_utc", $data->{"next_analysis_timedate_utc"});
-    readingsBulkUpdate($hash, $label."predicted_action_timedate_utc", $data->{"predicted_action_timedate_utc"});
-    readingsBulkUpdate($hash, $label."done_action_timedate_utc", $data->{"done_action_timedate_utc"});
-    readingsBulkUpdate($hash, $label."gauge_values_min", $data->{"gauge_values"}{"min_threshold"});
-    readingsBulkUpdate($hash, $label."gauge_values_max", $data->{"gauge_values"}{"max_threshold"});
-    readingsBulkUpdate($hash, $label."gauge_values_current", $data->{"gauge_values"}{"current_value"});
+    readingsBulkUpdate($hash, "status_key", $data->{"status_key"});
+    readingsBulkUpdate($hash, "instruction_key", $data->{"instruction_key"});
+    readingsBulkUpdate($hash, "next_analysis_timedate_utc", $data->{"next_analysis_timedate_utc"});
+    readingsBulkUpdate($hash, "predicted_action_timedate_utc", $data->{"predicted_action_timedate_utc"});
+    readingsBulkUpdate($hash, "done_action_timedate_utc", $data->{"done_action_timedate_utc"});
+    readingsBulkUpdate($hash, "gauge_values_min", $data->{"gauge_values"}{"min_threshold"});
+    readingsBulkUpdate($hash, "gauge_values_max", $data->{"gauge_values"}{"max_threshold"});
+    readingsBulkUpdate($hash, "gauge_values_current", $data->{"gauge_values"}{"current_value"});
 }
 1;

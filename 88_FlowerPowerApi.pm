@@ -27,7 +27,7 @@ sub FlowerPowerApi_Define($$) {
   
   my @a = split("[ \t][ \t]*", $def);
 
-  return "syntax: <name> FlowerPowerApi <username> <password> <client_id> <client_secret> <update_intervall_in_sec>"
+  return "syntax: define <name> FlowerPowerApi <username> <password> <client_id> <client_secret> <update_intervall_in_sec>"
     if(int(@a) < 7 && int(@a) > 7); 
 
   my $name            = $a[0];
