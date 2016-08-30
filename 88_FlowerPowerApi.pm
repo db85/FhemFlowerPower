@@ -9,6 +9,7 @@ use HTTP::Date;
 use constant AUTH_URL => "https://apiflowerpower.parrot.com/user/v1/authenticate?grant_type=password&username=%s&password=%s&client_id=%s&client_secret=%s";
 use constant PROFILE_URL => "https://apiflowerpower.parrot.com/user/v4/profile";
 use constant GARDEN_LOCATION_STATUS_URL => "https://apiflowerpower.parrot.com/sensor_data/v4/garden_locations_status";
+use constant SYNC_DATA_URL => "https://apiflowerpower.parrot.com/sensor_data/v3/sync";
 
 sub FlowerPowerApi_Initialize($$)
 {
@@ -79,7 +80,18 @@ sub FlowerPowerApi_Get($@) {
 }
 
 sub FlowerPowerApi_Set($@) {
-  return undef;
+    my ($hash, @a) = @_;
+
+  my $cmd= $a[1];
+
+  # usage check
+  if((@a == 2) && ($a[1] eq "update")) {
+    FlowerPowerApi_DisarmTimer($hash);
+    FlowerPowerApi_UpdateData($hash);
+    return undef;
+  } else {
+    return "Unknown argument $cmd, choose one of update";
+  }
 }
 
 sub FlowerPowerApi_Notify($$) {
@@ -105,10 +117,9 @@ sub FlowerPowerApi_DisarmTimer($) {
 }
 
 sub FlowerPowerApi_UpdateData($) {
-
     my ($hash) = @_;
     my $name = $hash->{NAME};
-
+ Log3 undef, 1, "update data"; 
     if(FlowerPowerApi_IsTokenValid($hash)){
       FlowerPowerApi_FetchProfile($hash);
       FlowerPowerApi_FetchGardenLocationStatus($hash);
@@ -131,7 +142,7 @@ sub FlowerPowerApi_IsTokenValid($) {
 
 sub FlowerPowerApi_FetchAuth($) {
   my ($hash) = @_;
-
+ Log3 undef, 1, "fetch auth"; 
   my %args= (
       grant_type => "password",
       username => $hash->{USERNAME}, 
@@ -257,7 +268,7 @@ sub FlowerPowerApi_FetchGardenLocationStatusFinished($$$) {
       my $sensors= $data->{"sensors"};
       my $i= 0;
       foreach my $sensor (@{$sensors}) {
-        FlowerPowerApi_ReadSensorData($hash, $i, $sensor);
+        FlowerPowerApi_ReadGardenLocationStatusSensorData($hash, $i, $sensor);
         $i++;
       }
       readingsBulkUpdate($hash, "sensor_count", $i);
@@ -265,7 +276,7 @@ sub FlowerPowerApi_FetchGardenLocationStatusFinished($$$) {
       my $locations= $data->{"locations"};
       $i= 0;
       foreach my $location (@{$locations}) {
-        my $label= "location_".$i;
+        my $label= "location_".$i."_identifier";
         readingsBulkUpdate($hash, $label, $location->{"location_identifier"});
 
         my $labelJson= ".location_".$location->{"location_identifier"};
@@ -273,12 +284,12 @@ sub FlowerPowerApi_FetchGardenLocationStatusFinished($$$) {
         $i++;
       }
       readingsBulkUpdate($hash, "location_count", $i);
-
-
       readingsEndUpdate($hash, 1);
+
+      FlowerPowerApi_FetchSyncData($hash);
     }
 
-    sub FlowerPowerApi_ReadSensorData($$$) {
+    sub FlowerPowerApi_ReadGardenLocationStatusSensorData($$$) {
       my ($hash, $sensor_number, $sensor_data) = @_;
 
       my $label= "sensor_" . $sensor_number ."_";
@@ -290,5 +301,106 @@ sub FlowerPowerApi_FetchGardenLocationStatusFinished($$$) {
       readingsBulkUpdate($hash, $label."battery_level_percent", $sensor_data->{"battery_level"}{"level_percent"});
       readingsBulkUpdate($hash, $label."processing_uploads", $sensor_data->{"processing_uploads"});
     }
+}
+
+sub FlowerPowerApi_FetchSyncData($) {
+  my ($hash) = @_;
+
+  my $header = "Authorization: Bearer " . $hash->{READINGS}{"access_token"}{VAL};
+
+  HttpUtils_NonblockingGet({   
+      url        => SYNC_DATA_URL,
+      timeout    => 15,
+      hash       => $hash,
+      header     => $header,
+      callback   => \&FlowerPowerApi_SyncDataFinished,
+      });
+
+  return undef;
+}
+
+sub FlowerPowerApi_SyncDataFinished($$$) {
+  my ($paramRef, $err, $response) = @_;
+  my $hash= $paramRef->{hash};
+
+    if($err) {
+      Log3 undef, 1, "FlowerPowerApi: fetch sync data failed with $err";
+    }else{
+      my $data = eval { decode_json($response) };
+
+      readingsBeginUpdate($hash);
+      FlowerPowerApi_SyncData_SensorData($hash, $data );
+      FlowerPowerApi_SyncData_LocationData($hash, $data );
+      readingsEndUpdate($hash, 1);
+    }
+}
+
+sub FlowerPowerApi_SyncData_SensorData($$) {
+  my ($hash, $data) = @_;
+
+  my $sensors= $data->{"sensors"};
+  my $i= 0;
+  foreach my $sensor (@{$sensors}) {
+    my $sensorIdx= FlowerPowerApi_FindSensorIndexBySerial($hash, $sensor->{"sensor_serial"}); 
+    if($sensorIdx < 0){
+      Log3 undef, 1, "FlowerPowerApi: no sensor idx found for serial " . $sensor->{"sensor_serial"};
+    }else{
+      my $label= "sensor_" . $sensorIdx ."_";
+      readingsBulkUpdate($hash, $label."firmware_version" , $sensor->{"firmware_version"});
+      readingsBulkUpdate($hash, $label."nickname" , $sensor->{"nickname"});
+      readingsBulkUpdate($hash, $label."color" , $sensor->{"color"});
+    }
+    $i++;
+  }
+}
+
+sub FlowerPowerApi_SyncData_LocationData($$) {
+  my ($hash, $data) = @_;
+
+  my $locations= $data->{"locations"};
+  my $i= 0;
+  foreach my $location (@{$locations}) {
+    my $locationIdx= FlowerPowerApi_FindLocationIndexByIdentifer($hash, $location->{"location_identifier"}); 
+    if($locationIdx < 0){
+      Log3 undef, 1, "FlowerPowerApi: no location idx found for serial " . $location->{"location_identifier"};
+    }else{
+      my $label= "location_" . $locationIdx ."_";
+      readingsBulkUpdate($hash, $label."plant_nickname" , $location->{"plant_nickname"});
+      readingsBulkUpdate($hash, $label."sensor_serial" , $location->{"sensor_serial"});
+    }
+    $i++;
+  }
+}
+
+sub FlowerPowerApi_FindSensorIndexBySerial($$) {
+  my ($hash, $sensor_serial) = @_;
+   return FlowerPowerApi_FindReadingByIdentifer($hash,  "sensor_", "_serial", $sensor_serial);
+}
+sub FlowerPowerApi_FindLocationIndexByIdentifer($$) {
+  my ($hash, $identifier) = @_;
+  return FlowerPowerApi_FindReadingByIdentifer($hash,  "location_", "_identifier", $identifier);
+}
+
+sub FlowerPowerApi_FindReadingByIdentifer($$$$) {
+    my ($hash, $key_first, $key_end, $identifier) = @_;
+  foreach my $reading (%{$hash->{READINGS}}) {
+    if(FlowerPowerApi_Begins_With($reading, $key_first) && FlowerPowerApi_Ends_With($reading, $key_end)){
+      my $value= $hash->{READINGS}{$reading}{VAL};
+      if($value eq $identifier){
+        my $first_part = substr($reading, 0, length($reading) - length($key_end));
+        my $idx = substr($first_part,length($key_first), length($first_part) - length($key_first));
+        return $idx;
+      }
+    }
+  }
+   Log3 undef, 1, "not found";
+  return -1;
+}
+
+sub FlowerPowerApi_Begins_With {
+    return substr($_[0], 0, length($_[1])) eq $_[1];
+}
+sub FlowerPowerApi_Ends_With {
+    return substr($_[0], length($_[0]) - length($_[1]), length($_[1])) eq $_[1];
 }
 1;
