@@ -7,7 +7,7 @@ It's recommended to delete all devices before update to the new api
 ## How to use
 
 1) You need a client_id and client_secret
-https://apiflowerpower.parrot.com/api_access/signup
+https://api-flower-power-pot.parrot.com/api_access/signup
 
 2) Define an api device in fhem
 ```
