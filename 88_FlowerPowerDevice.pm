@@ -165,7 +165,7 @@ sub FlowerPowerDevice_ReadLocationData($$) {
     readingsBulkUpdate($hash, "processing_uploads", $location->{"processing_uploads"});
     readingsBulkUpdate($hash, "battery_min", $location->{"battery"}{"gauge_values"}{"min_threshold"});
     readingsBulkUpdate($hash, "battery_max", $location->{"battery"}{"gauge_values"}{"max_threshold"});
-    readingsBulkUpdate($hash, "battery_min", $location->{"battery"}{"gauge_values"}{"current_value"});
+    readingsBulkUpdate($hash, "battery_current", $location->{"battery"}{"gauge_values"}{"current_value"});
 
     FlowerPowerDevice_ReadLocationSensorData($hash, "air_temperature_", $location->{"air_temperature"}, 1);
     FlowerPowerDevice_ReadLocationSensorData($hash, "light_", $location->{"light"}, 2);

@@ -286,20 +286,6 @@ sub FlowerPowerApi_FetchGardenLocationStatusFinished($$$) {
     FlowerPowerApi_UpdateState($hash);
 }
 
-sub FlowerPowerApi_ReadGardenLocationStatusSensorData($$$) {
-    my ($hash, $sensor_number, $sensor_data) = @_;
-
-    my $label = "sensor_".$sensor_number."_";
-    readingsBulkUpdate($hash, $label."serial", $sensor_data->{"sensor_serial"});
-    readingsBulkUpdate($hash, $label."current_history_index", $sensor_data->{"current_history_index"});
-    readingsBulkUpdate($hash, $label."last_upload_datetime_utc", $sensor_data->{"last_upload_datetime_utc"});
-    readingsBulkUpdate($hash, $label."total_uploaded_samples", $sensor_data->{"total_uploaded_samples"});
-    readingsBulkUpdate($hash, $label."battery_end_of_life_date_utc",
-        $sensor_data->{"battery_level"}{"battery_end_of_life_date_utc"});
-    readingsBulkUpdate($hash, $label."battery_level_percent", $sensor_data->{"battery_level"}{"level_percent"});
-    readingsBulkUpdate($hash, $label."processing_uploads", $sensor_data->{"processing_uploads"});
-}
-
 sub FlowerPowerApi_UpdateState($) {
     my ($hash) = @_;
 
@@ -340,9 +326,8 @@ sub FlowerPowerApi_SyncDataFinished($$$) {
 }
 
 sub FlowerPowerApi_SyncData_SensorData($$$$) {
-    my ($hash, $idx, $location_identifier, $sensor) = @_;
+    my ($hash, $label, $location_identifier, $sensor) = @_;
 
-    my $label = "sensor_".$idx."_";
     readingsBulkUpdate($hash, $label."location_identifier", $location_identifier);
     readingsBulkUpdate($hash, $label."firmware_version", $sensor->{"firmware_version"});
     readingsBulkUpdate($hash, $label."nickname", $sensor->{"nickname"});
@@ -362,9 +347,12 @@ sub FlowerPowerApi_SyncData_LocationData($$) {
     my $locations = $data->{"locations"};
     my $i = 0;
     foreach my $location (@{$locations}) {
-        FlowerPowerApi_SyncData_SensorData($hash, $i, $location->{"location_identifier"}, $location->{"sensor"} );
+        my $label = "sensor_".$i."_";
+        FlowerPowerApi_SyncData_SensorData($hash, $label, $location->{"location_identifier"}, $location->{"sensor"} );
+        readingsBulkUpdate($hash, $label."plant_nickname", $location->{"plant_nickname"});
         $i++;
     }
+
 }
 
 sub FlowerPowerApi_Begins_With {
