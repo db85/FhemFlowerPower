@@ -8,10 +8,10 @@ use POSIX;
 use HTTP::Date;
 use Encode qw(encode decode);
 
-use constant AUTH_URL => "https://apiflowerpower.parrot.com/user/v1/authenticate?grant_type=password&username=%s&password=%s&client_id=%s&client_secret=%s";
-use constant PROFILE_URL => "https://apiflowerpower.parrot.com/user/v4/profile";
-use constant GARDEN_LOCATION_STATUS_URL => "https://apiflowerpower.parrot.com/sensor_data/v4/garden_locations_status";
-use constant SYNC_DATA_URL => "https://apiflowerpower.parrot.com/sensor_data/v3/sync";
+use constant AUTH_URL => "https://api-flower-power-pot.parrot.com/user/v1/authenticate?grant_type=password&username=%s&password=%s&client_id=%s&client_secret=%s";
+use constant PROFILE_URL => "https://api-flower-power-pot.parrot.com/user/v4/profile";
+use constant GARDEN_LOCATION_STATUS_URL => "https://api-flower-power-pot.parrot.com/garden/v1/status";
+use constant SYNC_DATA_URL => "https://api-flower-power-pot.parrot.com/garden/v2/configuration";
 
 
 sub FlowerPowerApi_Initialize($$)
@@ -266,22 +266,13 @@ sub FlowerPowerApi_FetchGardenLocationStatusFinished($$$) {
         my $data = eval { decode_json($response) };
 
         readingsBeginUpdate($hash);
-        readingsBulkUpdate($hash, "garden_status_version", $data->{"user_profile"}{"garden_status_version"});
-
-        my $sensors = $data->{"sensors"};
-        my $i = 0;
-        foreach my $sensor (@{$sensors}) {
-            FlowerPowerApi_ReadGardenLocationStatusSensorData($hash, $i, $sensor);
-            $i++;
-        }
-        readingsBulkUpdate($hash, "sensor_count", $i);
+        readingsBulkUpdate($hash, "garden_status_version", $data->{"garden_status_version"});
+        readingsBulkUpdate($hash, "user_config_version", $data->{"user_config_version"});
 
         my $locations = $data->{"locations"};
-        $i = 0;
+        my $i = 0;
         foreach my $location (@{$locations}) {
-            my $label = "location_".$i."_identifier";
-            readingsBulkUpdate($hash, $label, $location->{"location_identifier"});
-
+            #hidden json for device
             my $labelJson = ".location_".$location->{"location_identifier"};
             readingsBulkUpdate($hash, $labelJson, encode_json($location));
             $i++;
@@ -313,9 +304,9 @@ sub FlowerPowerApi_UpdateState($) {
     my ($hash) = @_;
 
     my $server_identifier = $hash->{READINGS}{"server_identifier"}{VAL};
-    my $sensor_count = $hash->{READINGS}{"sensor_count"}{VAL};
+    my $location_count = $hash->{READINGS}{"location_count"}{VAL};
 
-    $hash->{STATE} = "$server_identifier / $sensor_count";
+    $hash->{STATE} = "$server_identifier / $location_count";
 }
 
 sub FlowerPowerApi_FetchSyncData($) {
@@ -343,29 +334,26 @@ sub FlowerPowerApi_SyncDataFinished($$$) {
     } else {
         my $data = eval { JSON->new->utf8( 0 )->decode( encode('utf-8', $response) )};
         readingsBeginUpdate($hash);
-        FlowerPowerApi_SyncData_SensorData($hash, $data );
         FlowerPowerApi_SyncData_LocationData($hash, $data );
         readingsEndUpdate($hash, 1);
     }
 }
 
-sub FlowerPowerApi_SyncData_SensorData($$) {
-    my ($hash, $data) = @_;
+sub FlowerPowerApi_SyncData_SensorData($$$$) {
+    my ($hash, $idx, $location_identifier, $sensor) = @_;
 
-    my $sensors = $data->{"sensors"};
-    my $i = 0;
-    foreach my $sensor (@{$sensors}) {
-        my $sensorIdx = FlowerPowerApi_FindSensorIndexBySerial($hash, $sensor->{"sensor_serial"});
-        if ($sensorIdx < 0) {
-            Log3 undef, 1, "FlowerPowerApi: no sensor idx found for serial ".$sensor->{"sensor_serial"};
-        } else {
-            my $label = "sensor_".$sensorIdx."_";
-            readingsBulkUpdate($hash, $label."firmware_version", $sensor->{"firmware_version"});
-            readingsBulkUpdate($hash, $label."nickname", $sensor->{"nickname"});
-            readingsBulkUpdate($hash, $label."color", $sensor->{"color"});
-        }
-        $i++;
-    }
+    my $label = "sensor_".$idx."_";
+    readingsBulkUpdate($hash, $label."location_identifier", $location_identifier);
+    readingsBulkUpdate($hash, $label."firmware_version", $sensor->{"firmware_version"});
+    readingsBulkUpdate($hash, $label."nickname", $sensor->{"nickname"});
+    readingsBulkUpdate($hash, $label."color", $sensor->{"color"});
+    readingsBulkUpdate($hash, $label."system_id", $sensor->{"system_id"});
+    readingsBulkUpdate($hash, $label."sensor_identifier", $sensor->{"sensor_identifier"});
+    readingsBulkUpdate($hash, $label."hardware_revision", $sensor->{"hardware_revision"});
+    readingsBulkUpdate($hash, $label."calibration_data", $sensor->{"calibration_data"});
+    readingsBulkUpdate($hash, $label."sensor_type", $sensor->{"sensor_type"});
+    readingsBulkUpdate($hash, $label."nickname", $sensor->{"nickname"});
+    readingsBulkUpdate($hash, $label."assignment_datetime_utc", $sensor->{"assignment_datetime_utc"});
 }
 
 sub FlowerPowerApi_SyncData_LocationData($$) {
@@ -374,41 +362,9 @@ sub FlowerPowerApi_SyncData_LocationData($$) {
     my $locations = $data->{"locations"};
     my $i = 0;
     foreach my $location (@{$locations}) {
-        my $locationIdx = FlowerPowerApi_FindLocationIndexByIdentifer($hash, $location->{"location_identifier"});
-        if ($locationIdx < 0) {
-            Log3 undef, 1, "FlowerPowerApi: no location idx found for serial ".$location->{"location_identifier"};
-        } else {
-            my $label = "location_".$locationIdx."_";
-            readingsBulkUpdate($hash, $label."plant_nickname", $location->{"plant_nickname"});
-            readingsBulkUpdate($hash, $label."sensor_serial", $location->{"sensor_serial"});
-        }
+        FlowerPowerApi_SyncData_SensorData($hash, $i, $location->{"location_identifier"}, $location->{"sensor"} );
         $i++;
     }
-}
-
-sub FlowerPowerApi_FindSensorIndexBySerial($$) {
-    my ($hash, $sensor_serial) = @_;
-    return FlowerPowerApi_FindReadingByIdentifer($hash, "sensor_", "_serial", $sensor_serial);
-}
-sub FlowerPowerApi_FindLocationIndexByIdentifer($$) {
-    my ($hash, $identifier) = @_;
-    return FlowerPowerApi_FindReadingByIdentifer($hash, "location_", "_identifier", $identifier);
-}
-
-sub FlowerPowerApi_FindReadingByIdentifer($$$$) {
-    my ($hash, $key_first, $key_end, $identifier) = @_;
-    foreach my $reading (%{$hash->{READINGS}}) {
-        if (FlowerPowerApi_Begins_With($reading, $key_first) && FlowerPowerApi_Ends_With($reading, $key_end)) {
-            my $value = $hash->{READINGS}{$reading}{VAL};
-            if ($value eq $identifier) {
-                my $first_part = substr($reading, 0, length($reading) - length($key_end));
-                my $idx = substr($first_part, length($key_first), length($first_part) - length($key_first));
-                return $idx;
-            }
-        }
-    }
-    Log3 undef, 1, "not found";
-    return -1;
 }
 
 sub FlowerPowerApi_Begins_With {

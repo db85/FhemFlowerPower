@@ -1,6 +1,9 @@
 # Fhem Flower Power Modules
 Fhem module to fetch data from Parrot Flower Power API
 
+## Update to new API
+It's recommended to delete all devices before update to the new api 
+
 ## How to use
 
 1) You need a client_id and client_secret
